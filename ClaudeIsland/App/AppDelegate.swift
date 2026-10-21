@@ -1,36 +1,12 @@
 import AppKit
-import Sparkle
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowManager: WindowManager?
     private var screenObserver: ScreenObserver?
-    private var updateCheckTimer: Timer?
-
-    static var shared: AppDelegate?
-    let updater: SPUUpdater
-    private let userDriver: NotchUserDriver
 
     var windowController: NotchWindowController? {
         windowManager?.windowController
-    }
-
-    override init() {
-        userDriver = NotchUserDriver()
-        updater = SPUUpdater(
-            hostBundle: Bundle.main,
-            applicationBundle: Bundle.main,
-            userDriver: userDriver,
-            delegate: nil
-        )
-        super.init()
-        AppDelegate.shared = self
-
-        do {
-            try updater.start()
-        } catch {
-            print("Failed to start Sparkle updater: \(error)")
-        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -48,15 +24,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenObserver = ScreenObserver { [weak self] in
             self?.handleScreenChange()
         }
-
-        if updater.canCheckForUpdates {
-            updater.checkForUpdates()
-        }
-
-        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
-            guard let updater = self?.updater, updater.canCheckForUpdates else { return }
-            updater.checkForUpdates()
-        }
     }
 
     private func handleScreenChange() {
@@ -64,7 +31,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        updateCheckTimer?.invalidate()
         screenObserver = nil
     }
 

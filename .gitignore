@@ -33,12 +33,6 @@ Pods/
 *.iml
 .vscode/
 
-# Sparkle signing keys (NEVER commit these!)
-.sparkle-keys/
-
-# Release artifacts
-releases/
-
 # Xcode backup
 *.xcodeproj.backup/
 CLAUDE.md
