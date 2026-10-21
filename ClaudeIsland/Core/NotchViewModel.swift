@@ -266,16 +266,6 @@ class NotchViewModel: ObservableObject {
         contentType = .instances
     }
 
-    func notchPop() {
-        guard status == .closed else { return }
-        status = .popping
-    }
-
-    func notchUnpop() {
-        guard status == .popping else { return }
-        status = .closed
-    }
-
     func toggleMenu() {
         contentType = contentType == .menu ? .instances : .menu
     }

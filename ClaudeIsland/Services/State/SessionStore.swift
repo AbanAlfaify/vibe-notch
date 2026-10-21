@@ -8,7 +8,6 @@
 
 import Combine
 import Foundation
-import Mixpanel
 import os.log
 
 /// Central state manager for all Claude sessions
@@ -66,9 +65,6 @@ actor SessionStore {
         case .permissionDenied(let sessionId, let toolUseId, let reason):
             await processPermissionDenied(sessionId: sessionId, toolUseId: toolUseId, reason: reason)
 
-        case .permissionSocketFailed(let sessionId, let toolUseId):
-            await processSocketFailure(sessionId: sessionId, toolUseId: toolUseId)
-
         case .fileUpdated(let payload):
             await processFileUpdate(payload)
 
@@ -110,10 +106,6 @@ actor SessionStore {
 
         case .subagentStopped(let sessionId, let taskToolId):
             processSubagentStopped(sessionId: sessionId, taskToolId: taskToolId)
-
-        case .agentFileUpdated:
-            // No longer used - subagent tools are populated from JSONL completion
-            break
         }
 
         publishState()
@@ -123,19 +115,9 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
-        let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
-        // Track new session in Mixpanel
-        if isNewSession {
-            Mixpanel.mainInstance().track(event: "Session Started")
-        }
-
         session.pid = event.pid
-        if let pid = event.pid {
-            let tree = ProcessTreeBuilder.shared.buildTree()
-            session.isInTmux = ProcessTreeBuilder.shared.isInTmux(pid: pid, tree: tree)
-        }
         if let tty = event.tty {
             session.tty = tty.replacingOccurrences(of: "/dev/", with: "")
         }
@@ -182,7 +164,6 @@ actor SessionStore {
             projectName: URL(fileURLWithPath: event.cwd).lastPathComponent,
             pid: event.pid,
             tty: event.tty?.replacingOccurrences(of: "/dev/", with: ""),
-            isInTmux: false,  // Will be updated
             phase: .idle
         )
     }
@@ -511,38 +492,6 @@ actor SessionStore {
                 if session.phase.canTransition(to: .processing) {
                     session.phase = .processing
                 }
-            }
-        }
-
-        sessions[sessionId] = session
-    }
-
-    private func processSocketFailure(sessionId: String, toolUseId: String) async {
-        guard var session = sessions[sessionId] else { return }
-
-        // Mark the failed tool's status as error
-        updateToolStatus(in: &session, toolId: toolUseId, status: .error)
-
-        // Check if there are other tools still waiting for approval
-        if let nextPending = findNextPendingTool(in: session, excluding: toolUseId) {
-            // Another tool is waiting - switch to that tool's context
-            let newPhase = SessionPhase.waitingForApproval(PermissionContext(
-                toolUseId: nextPending.id,
-                toolName: nextPending.name,
-                toolInput: nil,
-                receivedAt: nextPending.timestamp
-            ))
-            if session.phase.canTransition(to: newPhase) {
-                session.phase = newPhase
-                Self.logger.debug("Switched to next pending tool after socket failure: \(nextPending.id.prefix(12), privacy: .public)")
-            }
-        } else {
-            // No more pending tools - clear permission state
-            if case .waitingForApproval(let ctx) = session.phase, ctx.toolUseId == toolUseId {
-                session.phase = .idle
-            } else if case .waitingForApproval = session.phase {
-                // The failed tool wasn't in phase context, but no others pending
-                session.phase = .idle
             }
         }
 

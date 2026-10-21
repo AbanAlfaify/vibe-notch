@@ -14,7 +14,6 @@ struct ChatView: View {
     let sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
 
-    @State private var inputText: String = ""
     @State private var history: [ChatHistoryItem] = []
     @State private var session: SessionState
     @State private var isLoading: Bool = true
@@ -24,7 +23,6 @@ struct ChatView: View {
     @State private var newMessageCount: Int = 0
     @State private var previousHistoryCount: Int = 0
     @State private var isBottomVisible: Bool = true
-    @FocusState private var isInputFocused: Bool
 
     init(sessionId: String, initialSession: SessionState, sessionMonitor: ClaudeSessionMonitor, viewModel: NotchViewModel) {
         self.sessionId = sessionId
@@ -67,7 +65,7 @@ struct ChatView: View {
                     messageList
                 }
 
-                // Approval bar, interactive prompt, or Input bar
+                // Approval bar or interactive prompt
                 if let tool = approvalTool {
                     if tool == "AskUserQuestion" {
                         // Interactive tools - show prompt to answer in terminal
@@ -83,9 +81,6 @@ struct ChatView: View {
                                 removal: .opacity
                             ))
                     }
-                } else {
-                    inputBar
-                        .transition(.opacity)
                 }
             }
         }
@@ -156,22 +151,6 @@ struct ChatView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         shouldScrollToBottom = true
                     }
-                }
-            }
-        }
-        .onChange(of: canSendMessages) { _, canSend in
-            // Auto-focus input when tmux messaging becomes available
-            if canSend && !isInputFocused {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isInputFocused = true
-                }
-            }
-        }
-        .onAppear {
-            // Auto-focus input when chat opens and tmux messaging is available
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if canSendMessages {
-                    isInputFocused = true
                 }
             }
         }
@@ -351,61 +330,6 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Input Bar
-
-    /// Can send messages only if session is in tmux
-    private var canSendMessages: Bool {
-        session.isInTmux && session.tty != nil
-    }
-
-    private var inputBar: some View {
-        HStack(spacing: 10) {
-            TextField(canSendMessages ? "Message Claude..." : "Open Claude Code in tmux to enable messaging", text: $inputText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundColor(canSendMessages ? .white : .white.opacity(0.4))
-                .focused($isInputFocused)
-                .disabled(!canSendMessages)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(canSendMessages ? 0.08 : 0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20)
-                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-                .onSubmit {
-                    sendMessage()
-                }
-
-            Button {
-                sendMessage()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(!canSendMessages || inputText.isEmpty ? .white.opacity(0.2) : .white.opacity(0.9))
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSendMessages || inputText.isEmpty)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
-        .overlay(alignment: .top) {
-            LinearGradient(
-                colors: [fadeColor.opacity(0), fadeColor.opacity(0.7)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-            .offset(y: -24) // Push above input bar
-            .allowsHitTesting(false)
-        }
-        .zIndex(1) // Render above message list
-    }
-
     // MARK: - Approval Bar
 
     private func approvalBar(tool: String) -> some View {
@@ -421,10 +345,7 @@ struct ChatView: View {
 
     /// Bar for interactive tools like AskUserQuestion that need terminal input
     private var interactivePromptBar: some View {
-        ChatInteractivePromptBar(
-            isInTmux: session.isInTmux,
-            onGoToTerminal: { focusTerminal() }
-        )
+        ChatInteractivePromptBar()
     }
 
     // MARK: - Autoscroll Management
@@ -444,77 +365,12 @@ struct ChatView: View {
 
     // MARK: - Actions
 
-    private func focusTerminal() {
-        Task {
-            if let pid = session.pid {
-                _ = await YabaiController.shared.focusWindow(forClaudePid: pid)
-            } else {
-                _ = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
-            }
-        }
-    }
-
     private func approvePermission() {
         sessionMonitor.approvePermission(sessionId: sessionId)
     }
 
     private func denyPermission() {
         sessionMonitor.denyPermission(sessionId: sessionId, reason: nil)
-    }
-
-    private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-
-        inputText = ""
-
-        // Resume autoscroll when user sends a message
-        resumeAutoscroll()
-        shouldScrollToBottom = true
-
-        // Don't add to history here - it will be synced from JSONL when UserPromptSubmit event fires
-        Task {
-            await sendToSession(text)
-        }
-    }
-
-    private func sendToSession(_ text: String) async {
-        guard session.isInTmux else { return }
-        guard let tty = session.tty else { return }
-
-        if let target = await findTmuxTarget(tty: tty) {
-            _ = await ToolApprovalHandler.shared.sendMessage(text, to: target)
-        }
-    }
-
-    private func findTmuxTarget(tty: String) async -> TmuxTarget? {
-        guard let tmuxPath = await TmuxPathFinder.shared.getTmuxPath() else {
-            return nil
-        }
-
-        do {
-            let output = try await ProcessExecutor.shared.run(
-                tmuxPath,
-                arguments: ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index} #{pane_tty}"]
-            )
-
-            let lines = output.components(separatedBy: "\n")
-            for line in lines {
-                let parts = line.components(separatedBy: " ")
-                guard parts.count >= 2 else { continue }
-
-                let target = parts[0]
-                let paneTty = parts[1].replacingOccurrences(of: "/dev/", with: "")
-
-                if paneTty == tty {
-                    return TmuxTarget(from: target)
-                }
-            }
-        } catch {
-            return nil
-        }
-
-        return nil
     }
 }
 
@@ -1050,11 +906,7 @@ struct InterruptedMessageView: View {
 
 /// Bar for interactive tools like AskUserQuestion that need terminal input
 struct ChatInteractivePromptBar: View {
-    let isInTmux: Bool
-    let onGoToTerminal: () -> Void
-
     @State private var showContent = false
-    @State private var showButton = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1072,28 +924,6 @@ struct ChatInteractivePromptBar: View {
             .offset(x: showContent ? 0 : -10)
 
             Spacer()
-
-            // Terminal button on right (similar to Allow button)
-            Button {
-                if isInTmux {
-                    onGoToTerminal()
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Terminal")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .foregroundColor(isInTmux ? .black : .white.opacity(0.4))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isInTmux ? Color.white.opacity(0.95) : Color.white.opacity(0.1))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .opacity(showButton ? 1 : 0)
-            .scaleEffect(showButton ? 1 : 0.8)
         }
         .frame(minHeight: 44)  // Consistent height with other bars
         .padding(.horizontal, 16)
@@ -1102,9 +932,6 @@ struct ChatInteractivePromptBar: View {
         .onAppear {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7).delay(0.05)) {
                 showContent = true
-            }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7).delay(0.1)) {
-                showButton = true
             }
         }
     }

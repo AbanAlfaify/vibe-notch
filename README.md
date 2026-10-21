@@ -1,59 +1,52 @@
 <div align="center">
   <img src="ClaudeIsland/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" alt="Logo" width="100" height="100">
-  <h3 align="center">Vibe Notch (previously Claude Island)</h3>
-  <p align="center">
-    A macOS menu bar app that brings Dynamic Island-style notifications to Claude Code CLI sessions.
-    <br />
-    <br />
-    <a href="https://github.com/farouqaldori/vibe-notch/releases/latest" target="_blank" rel="noopener noreferrer">
-      <img src="https://img.shields.io/github/v/release/farouqaldori/vibe-notch?style=rounded&color=white&labelColor=000000&label=release" alt="Release Version" />
-    </a>
-    <a href="#" target="_blank" rel="noopener noreferrer">
-      <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/farouqaldori/vibe-notch/total?style=rounded&color=white&labelColor=000000">
-    </a>
-  </p>
+  <h3 align="center">Vibe Notch</h3>
+  <p align="center">Aban's build of the notch overlay for Claude Code sessions.</p>
 </div>
 
-> **🟢 Actively maintained**
->
-> Launched v1.2 in December 2025, then took a 4-month break. v1.3 (April 2026) works through the backlog of contributor PRs and bug reports and kicks off a regular cadence again. Open PRs and issues are being reviewed — thanks for your patience.
+## What it is
 
-## Features
+Vibe Notch is a macOS menu bar app that shows your Claude Code sessions in an overlay that grows out of the MacBook notch. It lists running sessions with their state, shows each session's chat history, and lets you allow or deny a tool call without switching windows.
 
-- **Notch UI** — Animated overlay that expands from the MacBook notch
-- **Live Session Monitoring** — Track multiple Claude Code sessions in real-time
-- **Permission Approvals** — Approve or deny tool executions directly from the notch
-- **Chat History** — View full conversation history with markdown rendering
-- **Auto-Setup** — Hooks install automatically on first launch
+This repo is a fork of [farouqaldori/vibe-notch](https://github.com/farouqaldori/vibe-notch). It is a personal build: nothing here is sent upstream, and useful upstream changes are pulled in by hand.
+
+Compared with upstream, this fork:
+
+- sends no telemetry (Mixpanel is gone);
+- never updates itself (Sparkle is gone); you rebuild it from source;
+- has no tmux or yabai support. Replying from the notch and jumping to a session's window come back in Phase 1, built on a Claude Code mod.
 
 ## Requirements
 
-- macOS 15.6+
-- Claude Code CLI
+- macOS 15.6 or later
+- Xcode 27.1
+- The Claude Code CLI
+- An Apple Development signing identity for team `L2Z9AQ34Q3`. To build under another team, change `DEVELOPMENT_TEAM` in the project and `TEAM_ID` in `scripts/install.sh`.
 
-## Install
-
-Download the latest release or build from source:
+## Build and install
 
 ```bash
-xcodebuild -scheme ClaudeIsland -configuration Release build
+./scripts/install.sh
 ```
 
-## How It Works
+The script builds the Release configuration with Xcode (Swift packages resolve from GitHub on the first build), checks that the app is signed for team `L2Z9AQ34Q3`, quits any running copy, replaces `/Applications/Vibe Notch.app` and launches it. Build output goes to `build/`, which git ignores. There is no DMG and no notarizing.
 
-Vibe Notch installs hooks into `~/.claude/hooks/` that communicate session state via a Unix socket. The app listens for events and displays them in the notch overlay.
+## How it works today
 
-When Claude needs permission to run a tool, the notch expands with approve/deny buttons—no need to switch to the terminal.
+On launch the app still runs upstream's hook installer. It copies `claude-island-state.py` into `~/.claude/hooks/` and adds hook entries for it to `~/.claude/settings.json`. Claude Code then runs that script on each hook event, and the script reports to the app over the Unix socket `/tmp/claude-island.sock`.
 
-## Analytics
+The installer rewrites `~/.claude/settings.json`, so back that file up before the first launch:
 
-Vibe Notch uses Mixpanel to collect anonymous usage data:
+```bash
+cp -p ~/.claude/settings.json ~/.claude/settings.json.before-vibe-notch
+```
 
-- **App Launched** — App version, build number, macOS version
-- **Session Started** — When a new Claude Code session is detected
+Phase 1 replaces the hook script with the `aban-notch` mod and removes what the installer added.
 
-No personal data or conversation content is collected.
+## Roadmap
+
+The plan for this fork, phase by phase, is in [ROADMAP.md](ROADMAP.md).
 
 ## License
 
-Apache 2.0
+Apache 2.0, see [LICENSE.md](LICENSE.md).

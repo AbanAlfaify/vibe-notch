@@ -71,7 +71,6 @@ struct ClaudeInstancesView: View {
                 ForEach(sortedInstances) { session in
                     InstanceRow(
                         session: session,
-                        onFocus: { focusSession(session) },
                         onChat: { openChat(session) },
                         onArchive: { archiveSession(session) },
                         onApprove: { approveSession(session) },
@@ -86,18 +85,6 @@ struct ClaudeInstancesView: View {
     }
 
     // MARK: - Actions
-
-    private func focusSession(_ session: SessionState) {
-        guard session.isInTmux else { return }
-
-        Task {
-            if let pid = session.pid {
-                _ = await YabaiController.shared.focusWindow(forClaudePid: pid)
-            } else {
-                _ = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
-            }
-        }
-    }
 
     private func openChat(_ session: SessionState) {
         viewModel.showChat(for: session)
@@ -120,7 +107,6 @@ struct ClaudeInstancesView: View {
 
 struct InstanceRow: View {
     let session: SessionState
-    let onFocus: () -> Void
     let onChat: () -> Void
     let onArchive: () -> Void
     let onApprove: () -> Void
@@ -128,7 +114,6 @@ struct InstanceRow: View {
 
     @State private var isHovered = false
     @State private var spinnerPhase = 0
-    @State private var isYabaiAvailable = false
 
     private let claudeOrange = Color(red: 0.85, green: 0.47, blue: 0.34)
     private let spinnerSymbols = ["·", "✢", "✳", "∗", "✻", "✽"]
@@ -261,19 +246,9 @@ struct InstanceRow: View {
 
             // Action icons or approval buttons
             if isWaitingForApproval && isInteractiveTool {
-                // Interactive tools like AskUserQuestion - show chat + terminal buttons
-                HStack(spacing: 8) {
-                    IconButton(icon: "bubble.left") {
-                        onChat()
-                    }
-
-                    // Go to Terminal button (only if yabai available)
-                    if isYabaiAvailable {
-                        TerminalButton(
-                            isEnabled: session.isInTmux,
-                            onTap: { onFocus() }
-                        )
-                    }
+                // Interactive tools like AskUserQuestion - answered in Claude Code
+                IconButton(icon: "bubble.left") {
+                    onChat()
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else if isWaitingForApproval {
@@ -288,13 +263,6 @@ struct InstanceRow: View {
                     // Chat icon - always show
                     IconButton(icon: "bubble.left") {
                         onChat()
-                    }
-
-                    // Focus icon (only for tmux instances with yabai)
-                    if session.isInTmux && isYabaiAvailable {
-                        IconButton(icon: "eye") {
-                            onFocus()
-                        }
                     }
 
                     // Archive button - only for idle or completed sessions
@@ -320,9 +288,6 @@ struct InstanceRow: View {
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
-        .task {
-            isYabaiAvailable = await WindowFinder.shared.isYabaiAvailable()
-        }
     }
 
     @ViewBuilder
@@ -468,34 +433,6 @@ struct CompactTerminalButton: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(isEnabled ? Color.white.opacity(0.15) : Color.white.opacity(0.05))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Terminal Button
-
-struct TerminalButton: View {
-    let isEnabled: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button {
-            if isEnabled {
-                onTap()
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "terminal")
-                    .font(.system(size: 9, weight: .medium))
-                Text("Terminal")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .foregroundColor(isEnabled ? .black : .white.opacity(0.4))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(isEnabled ? Color.white.opacity(0.95) : Color.white.opacity(0.1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
