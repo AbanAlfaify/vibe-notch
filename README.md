@@ -45,15 +45,6 @@ Vibe Notch installs hooks into `~/.claude/hooks/` that communicate session state
 
 When Claude needs permission to run a tool, the notch expands with approve/deny buttons—no need to switch to the terminal.
 
-## Analytics
-
-Vibe Notch uses Mixpanel to collect anonymous usage data:
-
-- **App Launched** — App version, build number, macOS version
-- **Session Started** — When a new Claude Code session is detected
-
-No personal data or conversation content is collected.
-
 ## License
 
 Apache 2.0
