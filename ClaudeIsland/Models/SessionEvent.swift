@@ -24,9 +24,6 @@ enum SessionEvent: Sendable {
     /// User denied a permission request
     case permissionDenied(sessionId: String, toolUseId: String, reason: String?)
 
-    /// Permission socket failed (connection died before response)
-    case permissionSocketFailed(sessionId: String, toolUseId: String)
-
     // MARK: - File Events (from ConversationParser)
 
     /// JSONL file was updated with new content
@@ -56,9 +53,6 @@ enum SessionEvent: Sendable {
 
     /// A Task (subagent) tool has stopped
     case subagentStopped(sessionId: String, taskToolId: String)
-
-    /// Agent file was updated with new subagent tools (from AgentFileWatcher)
-    case agentFileUpdated(sessionId: String, taskToolId: String, tools: [SubagentToolInfo])
 
     // MARK: - Clear Events (from JSONL detection)
 
@@ -189,8 +183,6 @@ extension SessionEvent: CustomStringConvertible {
             return "permissionApproved(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
         case .permissionDenied(let sessionId, let toolUseId, _):
             return "permissionDenied(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
-        case .permissionSocketFailed(let sessionId, let toolUseId):
-            return "permissionSocketFailed(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
         case .fileUpdated(let payload):
             return "fileUpdated(session: \(payload.sessionId.prefix(8)), messages: \(payload.messages.count))"
         case .interruptDetected(let sessionId):
@@ -213,8 +205,6 @@ extension SessionEvent: CustomStringConvertible {
             return "subagentToolCompleted(session: \(sessionId.prefix(8)), tool: \(toolId.prefix(12)), status: \(status))"
         case .subagentStopped(let sessionId, let taskToolId):
             return "subagentStopped(session: \(sessionId.prefix(8)), task: \(taskToolId.prefix(12)))"
-        case .agentFileUpdated(let sessionId, let taskToolId, let tools):
-            return "agentFileUpdated(session: \(sessionId.prefix(8)), task: \(taskToolId.prefix(12)), tools: \(tools.count))"
         }
     }
 }
